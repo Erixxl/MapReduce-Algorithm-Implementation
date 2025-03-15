@@ -1,0 +1,37 @@
+Badescu Andrei-Cristian, 331CA
+
+Parallel MapReduce Algorithm
+
+My implementation of the MapReduce paradigm uses two different types of threads: Mappers and Reducers.
+All threads are created at the same time and are uniquely identified by an ID.
+Based on this ID, each thread will run the Mapper or the Reducer code respectively.
+After all threads finish execution, for each letter, a special text file is created that will contain the results
+of the program; all writing is done by the main thread to avoid OS-related overheads.
+
+Reducer threads:
+    - wait for all Mapper threads to finish execution
+    - read elements from the shared (word, file number) pair vector
+        - the vector is split equally based on the ID value (IDs: [0 ... reducer_no - 1])
+          in order to divide the workload among all threads and prevent the same element from
+          being accessed multiple times
+        - as each pair is read, the corresponding list of (word, [all file numbers]) pairs
+          is updated by adding the file number to the vector of file numbers
+            - the lists are implemented as maps in order to avoid duplicates
+            - as list updates are critical operations, each addition is guarded by a specific mutex
+            - for parallelism efficiency, each letter has its designated list and mutex
+        - after finishing, the threads wait for the other ones to finish as well; at this point,
+          the 26 maps will each include an alphabetical list with words as keys and integer vectors as values;
+          the vectors contain the numbers that describe in which files the key word can be found
+        - for each letter, transform the corresponding map into a vector of (word, [all file numbers]) pairs;
+          the file number vectors are each sorted, then the entire vector is sorted so that words used in more
+          files appear first, in lexicographical order
+
+Mapper threads:
+    - read from the source file the path to the next unopened file
+    - parse the text from the input file and add the generated (word, file number) pairs to a temporary map
+        - each string of characters is read from the file; a new string is created by eliminating all non-letter
+          symbols and by converting all uppercase letters to lowercase
+        - if, after parsing, the string is empty (it didn't contain any letters), the string is discarded
+        - a map is used to store all words as keys in order to avoid duplicates
+    - after finishing, all mapped values are added to a private aggregate list, and the process is repeated
+    - if no input files are left, add every pair collected inside the aggregate list to the shared word list
